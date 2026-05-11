@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String             @id @default(uuid())
+  numericId       Int?               @unique @map("numeric_id")
+  email           String             @unique
+  username        String
+  passwordHash    String             @map("password_hash")
+  avatarUrl       String?            @map("avatar_url")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  refreshSessions RefreshSession[]
+  ownedWorkspaces Workspace[]        @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+  channelsCreated Channel[]          @relation("ChannelCreator")
+  channelAccess   ChannelMember[]
+  messages        Message[]
+  joinRequests    WorkspaceJoinRequest[]
+
+  @@map("users")
+}
+
+model EmailVerificationCode {
+  id           String    @id @default(uuid())
+  email        String
+  username     String
+  passwordHash String    @map("password_hash")
+  codeHash     String    @map("code_hash")
+  purpose      String    @default("register")
+  attempts     Int       @default(0)
+  expiresAt    DateTime  @map("expires_at")
+  usedAt       DateTime? @map("used_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([email, purpose, usedAt])
+  @@index([expiresAt])
+  @@map("email_verification_codes")
+}
+
+model RefreshSession {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tokenHash  String    @map("token_hash")
+  userAgent  String?   @map("user_agent")
+  ipAddress  String?   @map("ip_address")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_sessions")
+}
+
+model Workspace {
+  id         String            @id @default(uuid())
+  name       String
+  slug       String            @unique
+  joinPolicy String            @default("request") @map("join_policy")
+  ownerId    String            @map("owner_id")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  owner      User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members    WorkspaceMember[]
+  channels   Channel[]
+  joinRequests WorkspaceJoinRequest[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String    @map("workspace_id")
+  userId      String    @map("user_id")
+  role        String
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Channel {
+  id         String          @id @default(uuid())
+  workspaceId String         @map("workspace_id")
+  name       String
+  type       String
+  isPrivate  Boolean         @default(false) @map("is_private")
+  createdBy  String          @map("created_by")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator    User            @relation("ChannelCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  members    ChannelMember[]
+  messages   Message[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  channelId String  @map("channel_id")
+  userId    String  @map("user_id")
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@map("channel_members")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  channelId String   @map("channel_id")
+  authorId  String   @map("author_id")
+  body      String
+  attachmentUrl  String?  @map("attachment_url")
+  attachmentName String?  @map("attachment_name")
+  attachmentMime String?  @map("attachment_mime")
+  attachmentSize Int?     @map("attachment_size")
+  editedAt  DateTime? @map("edited_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([channelId, createdAt])
+  @@map("messages")
+}
+
+model WorkspaceJoinRequest {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId, status])
+  @@map("workspace_join_requests")
+}

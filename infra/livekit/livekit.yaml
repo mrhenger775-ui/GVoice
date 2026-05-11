@@ -1,0 +1,26 @@
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: true
+  stun_servers:
+    - stun:stun.l.google.com:19302
+
+redis:
+  address: livekit-redis:6379
+
+keys:
+  # Replace before launch.
+  LK_REPLACE_API_KEY: LK_REPLACE_API_SECRET
+
+turn:
+  enabled: true
+  # External IP or DNS name that clients reach from the internet.
+  domain: livekit.gvoice.online
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: true

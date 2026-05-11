@@ -1,0 +1,141 @@
+const { app, BrowserWindow, shell, session, desktopCapturer, dialog } = require("electron");
+const path = require("node:path");
+const { autoUpdater } = require("electron-updater");
+const DESKTOP_START_URL = process.env.GVOICE_DESKTOP_URL || "https://gvoice.online";
+
+const isDev = process.argv.includes("--dev");
+let mainWindow = null;
+
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+async function createWindow() {
+  const win = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    icon: path.join(__dirname, "icons", "icon.ico"),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  });
+
+  win.webContents.setAudioMuted(false);
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  if (isDev) {
+    await win.loadURL("http://localhost:5173");
+    win.webContents.openDevTools({ mode: "detach" });
+    mainWindow = win;
+    return;
+  }
+
+  await win.loadURL(DESKTOP_START_URL);
+  mainWindow = win;
+}
+
+function setupAutoUpdates() {
+  if (!app.isPackaged || isDev) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("error", (err) => {
+    console.warn("[auto-update] error:", err?.message ?? err);
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    mainWindow?.webContents.send("gvoice:update-status", {
+      stage: "available",
+      version: info?.version ?? null
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow?.webContents.send("gvoice:update-status", {
+      stage: "downloading",
+      percent: Number(progress?.percent ?? 0)
+    });
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    mainWindow?.webContents.send("gvoice:update-status", {
+      stage: "downloaded",
+      version: info?.version ?? null
+    });
+    const response = await dialog.showMessageBox(mainWindow ?? undefined, {
+      type: "info",
+      title: "Обновление готово",
+      message: `Скачано обновление GVoice ${info?.version ?? ""}.`,
+      detail: "Нажми «Перезапустить», чтобы установить обновление сейчас.",
+      buttons: ["Перезапустить", "Позже"],
+      defaultId: 0,
+      cancelId: 1
+    });
+    if (response.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  void autoUpdater.checkForUpdatesAndNotify();
+  setInterval(() => {
+    void autoUpdater.checkForUpdatesAndNotify();
+  }, 60 * 60 * 1000);
+}
+
+app.whenReady().then(() => {
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === "media" || permission === "display-capture") {
+      return true;
+    }
+    return false;
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === "media" || permission === "display-capture") {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+
+  session.defaultSession.setDisplayMediaRequestHandler(
+    async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
+        callback({
+          video: sources[0],
+          audio: "loopback"
+        });
+      } catch {
+        callback({});
+      }
+    },
+    { useSystemPicker: true }
+  );
+
+  void createWindow();
+  setupAutoUpdates();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});

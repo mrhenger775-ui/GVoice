@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GVoice</string>
+    <string name="title_activity_main">GVoice</string>
+    <string name="package_name">online.gvoice.app</string>
+    <string name="custom_url_scheme">online.gvoice.app</string>
+</resources>

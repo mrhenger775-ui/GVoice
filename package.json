@@ -1,0 +1,68 @@
+{
+  "name": "gvoice",
+  "private": true,
+  "version": "0.1.0",
+  "author": "GVoice Team",
+  "description": "GVoice monorepo starter",
+  "main": "electron/main.cjs",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "build": "npm run build --workspace frontend && npm run build --workspace backend",
+    "desktop:dev": "concurrently \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron . --dev\"",
+    "desktop:build": "npm run build --workspace frontend && electron-builder --win nsis",
+    "desktop:pack": "npm run build --workspace frontend && electron-builder --dir",
+    "desktop:release": "npm run build --workspace frontend && electron-builder --win nsis --publish always"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "build": {
+    "appId": "online.gvoice.desktop",
+    "productName": "GVoice",
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "desktop-dist"
+    },
+    "asar": true,
+    "win": {
+      "icon": "electron/icons/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "GVoice-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mrhen",
+        "repo": "GVoice"
+      }
+    ],
+    "nsis": {
+      "installerIcon": "electron/icons/icon.ico",
+      "uninstallerIcon": "electron/icons/icon.ico",
+      "installerHeaderIcon": "electron/icons/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

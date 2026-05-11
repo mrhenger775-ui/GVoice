@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+coverage/
+*.log
+frontend/dist/
+backend/dist/
+desktop-dist/
+frontend/dist/
+frontend/android/app/build/
+frontend/android/.gradle/

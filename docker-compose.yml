@@ -1,0 +1,21 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: gvoice-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gvoice
+    ports:
+      - "5432:5432"
+    volumes:
+      - gvoice_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gvoice"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gvoice_pg_data:

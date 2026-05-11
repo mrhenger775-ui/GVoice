@@ -51,7 +51,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "mrhen",
+        "owner": "mrhenger775-ui",
         "repo": "GVoice"
       }
     ],

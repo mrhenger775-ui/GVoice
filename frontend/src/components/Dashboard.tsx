@@ -24,6 +24,13 @@ declare global {
       };
     };
     onYouTubeIframeAPIReady?: () => void;
+    gvoiceDesktop?: {
+      platform: string;
+      checkForUpdates?: () => Promise<{ ok: boolean; reason?: string }>;
+      onUpdateStatus?: (
+        handler: (payload: { stage: string; version?: string | null; percent?: number; message?: string }) => void
+      ) => (() => void) | void;
+    };
   }
 }
 
@@ -372,6 +379,11 @@ type WorkspaceContextMenuState = {
   y: number;
 };
 
+type DesktopUpdateStatus = {
+  stage: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
+  message: string;
+};
+
 function getEffectiveMediaPositionSec(state: MediaSessionState | null | undefined, nowMs = Date.now()): number {
   if (!state?.isActive) {
     return 0;
@@ -675,6 +687,11 @@ export function Dashboard() {
   const [platformDebugText, setPlatformDebugText] = useState<string>("");
   const [noiseMode, setNoiseMode] = useState<NoiseMode>("medium");
   const [settingsNoiseMode, setSettingsNoiseMode] = useState<NoiseMode>("medium");
+  const [desktopUpdateStatus, setDesktopUpdateStatus] = useState<DesktopUpdateStatus>({
+    stage: "idle",
+    message: "Проверка обновлений не запускалась."
+  });
+  const [desktopUpdateBusy, setDesktopUpdateBusy] = useState(false);
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") {
       return false;
@@ -754,6 +771,7 @@ export function Dashboard() {
   const canManageWorkspace = canModerateWorkspace;
   const canManageChannels = canManageWorkspace || selectedWorkspace?.role === "moderator";
   const canDeleteForeignMessages = selectedWorkspace?.role === "owner" || selectedWorkspace?.role === "admin" || selectedWorkspace?.role === "moderator";
+  const isDesktopRuntime = Boolean(window.gvoiceDesktop);
   const isVoiceChannelSelected = selectedChannel?.type === "voice";
   const selectedMediaSession = selectedChannelId ? mediaSessionByChannelId[selectedChannelId] ?? null : null;
   const isCurrentUserMediaMaster = selectedMediaSession?.masterUserId === user?.id;
@@ -792,6 +810,63 @@ export function Dashboard() {
     setProfileUsername(user?.username ?? "");
     setProfileEmail(user?.email ?? "");
   }, [user?.username, user?.email]);
+
+  useEffect(() => {
+    if (!window.gvoiceDesktop?.onUpdateStatus) {
+      return;
+    }
+    const unsubscribe = window.gvoiceDesktop.onUpdateStatus((payload) => {
+      if (payload.stage === "checking") {
+        setDesktopUpdateBusy(true);
+        setDesktopUpdateStatus({ stage: "checking", message: "Проверяем наличие обновлений..." });
+        return;
+      }
+      if (payload.stage === "available") {
+        setDesktopUpdateBusy(true);
+        setDesktopUpdateStatus({
+          stage: "available",
+          message: payload.version ? `Найдена версия ${payload.version}. Идет загрузка...` : "Найдено обновление. Идет загрузка..."
+        });
+        return;
+      }
+      if (payload.stage === "downloading") {
+        setDesktopUpdateBusy(true);
+        const percent = Number.isFinite(payload.percent) ? Math.round(payload.percent ?? 0) : 0;
+        setDesktopUpdateStatus({ stage: "downloading", message: `Скачиваем обновление: ${percent}%` });
+        return;
+      }
+      if (payload.stage === "downloaded") {
+        setDesktopUpdateBusy(false);
+        setDesktopUpdateStatus({
+          stage: "downloaded",
+          message: payload.version
+            ? `Обновление ${payload.version} скачано. Подтверди перезапуск в системном окне.`
+            : "Обновление скачано. Подтверди перезапуск в системном окне."
+        });
+        return;
+      }
+      if (payload.stage === "not-available") {
+        setDesktopUpdateBusy(false);
+        setDesktopUpdateStatus({
+          stage: "not-available",
+          message: payload.version ? `Новых версий нет (текущая: ${payload.version}).` : "Новых версий пока нет."
+        });
+        return;
+      }
+      if (payload.stage === "error") {
+        setDesktopUpdateBusy(false);
+        setDesktopUpdateStatus({
+          stage: "error",
+          message: payload.message ? `Ошибка проверки: ${payload.message}` : "Ошибка проверки обновлений."
+        });
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     voiceVolumeBySocketIdRef.current = voiceVolumeBySocketId;
@@ -2552,7 +2627,7 @@ export function Dashboard() {
           await updateNoiseMode(settingsNoiseMode);
           setInviteStatus("Настройки звука сохранены.");
         } else {
-          setInviteStatus("Режим шумоподавления уже применен.");
+          setInviteStatus("Режим шумоподавления уже применен. Обновления проверяются отдельной кнопкой ниже.");
         }
         return;
       }
@@ -2644,6 +2719,32 @@ export function Dashboard() {
       setError(err instanceof Error ? err.message : "Ошибка обновления профиля");
     } finally {
       setProfileBusy(false);
+    }
+  }
+
+  async function checkDesktopUpdatesManually() {
+    if (!window.gvoiceDesktop?.checkForUpdates) {
+      setError("Проверка обновлений доступна только в десктоп-приложении.");
+      return;
+    }
+    setError(null);
+    setDesktopUpdateBusy(true);
+    setDesktopUpdateStatus({ stage: "checking", message: "Проверяем наличие обновлений..." });
+    try {
+      const result = await window.gvoiceDesktop.checkForUpdates();
+      if (!result?.ok) {
+        setDesktopUpdateBusy(false);
+        setDesktopUpdateStatus({
+          stage: "error",
+          message: result?.reason ? `Ошибка проверки: ${result.reason}` : "Не удалось запустить проверку обновлений."
+        });
+      }
+    } catch (err) {
+      setDesktopUpdateBusy(false);
+      setDesktopUpdateStatus({
+        stage: "error",
+        message: err instanceof Error ? `Ошибка проверки: ${err.message}` : "Ошибка проверки обновлений."
+      });
     }
   }
 
@@ -4256,6 +4357,21 @@ export function Dashboard() {
                   <small style={{ color: "#94a3b8" }}>
                     Текущий режим: {NOISE_MODE_LABEL[noiseMode]} • Выбран: {NOISE_MODE_LABEL[settingsNoiseMode]}
                   </small>
+                  {isDesktopRuntime ? (
+                    <div style={{ display: "grid", gap: 6, marginTop: 2 }}>
+                      <button
+                        type="button"
+                        onClick={() => void checkDesktopUpdatesManually()}
+                        disabled={desktopUpdateBusy}
+                        style={{ justifySelf: "start" }}
+                      >
+                        {desktopUpdateBusy ? "Проверяем..." : "Проверить обновления"}
+                      </button>
+                      <small style={{ color: desktopUpdateStatus.stage === "error" ? "#f87171" : "#94a3b8" }}>
+                        {desktopUpdateStatus.message}
+                      </small>
+                    </div>
+                  ) : null}
                 </>
               )}
 

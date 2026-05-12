@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, session, desktopCapturer, dialog } = require("electron");
+const { app, BrowserWindow, shell, session, desktopCapturer, dialog, ipcMain } = require("electron");
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
 const DESKTOP_START_URL = process.env.GVOICE_DESKTOP_URL || "https://gvoice.online";
@@ -51,7 +51,15 @@ function setupAutoUpdates() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("error", (err) => {
+    mainWindow?.webContents.send("gvoice:update-status", {
+      stage: "error",
+      message: err?.message ?? String(err ?? "Unknown update error")
+    });
     console.warn("[auto-update] error:", err?.message ?? err);
+  });
+
+  autoUpdater.on("checking-for-update", () => {
+    mainWindow?.webContents.send("gvoice:update-status", { stage: "checking" });
   });
 
   autoUpdater.on("update-available", (info) => {
@@ -65,6 +73,13 @@ function setupAutoUpdates() {
     mainWindow?.webContents.send("gvoice:update-status", {
       stage: "downloading",
       percent: Number(progress?.percent ?? 0)
+    });
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    mainWindow?.webContents.send("gvoice:update-status", {
+      stage: "not-available",
+      version: info?.version ?? null
     });
   });
 
@@ -91,6 +106,24 @@ function setupAutoUpdates() {
   setInterval(() => {
     void autoUpdater.checkForUpdatesAndNotify();
   }, 60 * 60 * 1000);
+
+  ipcMain.handle("gvoice:check-for-updates", async () => {
+    if (!app.isPackaged || isDev) {
+      return {
+        ok: false,
+        reason: "dev"
+      };
+    }
+    try {
+      await autoUpdater.checkForUpdates();
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error?.message ?? String(error)
+      };
+    }
+  });
 }
 
 app.whenReady().then(() => {

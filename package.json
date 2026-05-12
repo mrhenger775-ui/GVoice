@@ -1,7 +1,7 @@
 {
   "name": "gvoice",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "GVoice Team",
   "description": "GVoice monorepo starter",
   "main": "electron/main.cjs",

@@ -92,6 +92,7 @@ const APP_BUILD_VERSION = __APP_VERSION__;
 const USE_LEGACY_WEBRTC_VOICE_MESH = false;
 const VOICE_VOLUME_STORAGE_KEY = "gvoice.voiceVolumeBySocketOrUser";
 const MIC_VOLUME_STORAGE_KEY = "gvoice.micInputVolume";
+const VOICE_KEYBINDS_STORAGE_KEY = "gvoice.voiceKeybinds";
 const BASIC_EMOJIS = ["😀", "😂", "🤣", "😊", "😍", "😎", "🤔", "😭", "😡", "👍", "🙏", "🔥", "❤️", "🎉", "✅", "❌"];
 const GVOICE_LOGO_MAIN_URL = "/ui/gvoice-logo-main.png";
 type NoiseMode = "off" | "medium" | "aggressive";
@@ -109,6 +110,14 @@ const ROLE_LABEL: Record<string, string> = {
 const CHANNEL_TYPE_LABEL: Record<string, string> = {
   text: "текстовый",
   voice: "голосовой"
+};
+type VoiceKeybindAction = "toggleMic" | "toggleDeafen" | "toggleScreenShare" | "pushToTalk";
+type VoiceKeybinds = Record<VoiceKeybindAction, string>;
+const DEFAULT_VOICE_KEYBINDS: VoiceKeybinds = {
+  toggleMic: "Ctrl+M",
+  toggleDeafen: "Ctrl+D",
+  toggleScreenShare: "Ctrl+Shift+S",
+  pushToTalk: "Alt+V"
 };
 
 function getAudioConstraintsByNoiseMode(mode: NoiseMode): MediaTrackConstraints {
@@ -344,6 +353,7 @@ type MessageContextMenuState = {
   y: number;
   canEdit: boolean;
   canDelete: boolean;
+  canReply: boolean;
 };
 
 type VoiceVolumeContextMenuState = {
@@ -646,6 +656,7 @@ export function Dashboard() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
   const [messageContextMenu, setMessageContextMenu] = useState<MessageContextMenuState | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
   const [messagesLoadingOlder, setMessagesLoadingOlder] = useState(false);
   const [messagesCursor, setMessagesCursor] = useState<string | null>(null);
@@ -662,7 +673,7 @@ export function Dashboard() {
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [workspaceEditName, setWorkspaceEditName] = useState("");
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"profile" | "security" | "audio">("profile");
+  const [settingsTab, setSettingsTab] = useState<"profile" | "security" | "audio" | "keybinds" | "updates">("profile");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
   const [profileCurrentPassword, setProfileCurrentPassword] = useState("");
@@ -674,11 +685,15 @@ export function Dashboard() {
   const [voiceParticipants, setVoiceParticipants] = useState<VoiceParticipant[]>([]);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
+  const [selfDeafened, setSelfDeafened] = useState(false);
+  const [voiceKeybinds, setVoiceKeybinds] = useState<VoiceKeybinds>(() => loadPersistedVoiceKeybinds());
+  const [recordingKeybindAction, setRecordingKeybindAction] = useState<VoiceKeybindAction | null>(null);
   const [voiceVolumeBySocketId, setVoiceVolumeBySocketId] = useState<Record<string, number>>(() => loadPersistedVoiceVolumeMap());
   const [micInputVolume, setMicInputVolume] = useState<number>(() => loadPersistedMicInputVolume());
   const [screenShareVolumeByKey, setScreenShareVolumeByKey] = useState<Record<string, number>>({});
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<Record<string, MediaStream>>({});
+  const [livekitRemoteAudioCount, setLivekitRemoteAudioCount] = useState(0);
   const [joinedScreenSharesByKey, setJoinedScreenSharesByKey] = useState<Record<string, boolean>>({});
   const [remoteScreenPresenterByKey, setRemoteScreenPresenterByKey] = useState<Record<string, string>>({});
   const [livekitStatus, setLivekitStatus] = useState<"idle" | "connecting" | "connected" | "failed">("idle");
@@ -727,6 +742,10 @@ export function Dashboard() {
   const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
   const voiceVolumeBySocketIdRef = useRef<Record<string, number>>({});
   const micInputVolumeRef = useRef<number>(1);
+  const selfDeafenedRef = useRef(false);
+  const muteBeforeDeafenRef = useRef(false);
+  const pushToTalkHoldingRef = useRef(false);
+  const pushToTalkPrevMutedRef = useRef(false);
   const screenShareVolumeByKeyRef = useRef<Record<string, number>>({});
   const joinedScreenSharesByKeyRef = useRef<Record<string, boolean>>({});
   const selectedWorkspaceIdRef = useRef<string | null>(null);
@@ -746,9 +765,12 @@ export function Dashboard() {
   const micOnSoundRef = useRef<HTMLAudioElement | null>(null);
   const micOffSoundRef = useRef<HTMLAudioElement | null>(null);
   const messagesListRef = useRef<HTMLDivElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const messageJumpHighlightTimeoutRef = useRef<number | null>(null);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const hasInitialChatScrollRef = useRef(false);
   const handledInviteTokenRef = useRef<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -773,6 +795,15 @@ export function Dashboard() {
   const canDeleteForeignMessages = selectedWorkspace?.role === "owner" || selectedWorkspace?.role === "admin" || selectedWorkspace?.role === "moderator";
   const isDesktopRuntime = Boolean(window.gvoiceDesktop);
   const isVoiceChannelSelected = selectedChannel?.type === "voice";
+  const remoteVoiceParticipantsCount = useMemo(
+    () => voiceParticipants.filter((participant) => participant.userId !== user?.id).length,
+    [voiceParticipants, user?.id]
+  );
+  const isRemoteVoiceSyncing =
+    voiceJoinedChannelId === selectedChannelId &&
+    livekitStatus === "connected" &&
+    remoteVoiceParticipantsCount > 0 &&
+    livekitRemoteAudioCount === 0;
   const selectedMediaSession = selectedChannelId ? mediaSessionByChannelId[selectedChannelId] ?? null : null;
   const isCurrentUserMediaMaster = selectedMediaSession?.masterUserId === user?.id;
   const effectiveSelectedMediaPositionSec = useMemo(
@@ -877,6 +908,10 @@ export function Dashboard() {
   }, [micInputVolume]);
 
   useEffect(() => {
+    selfDeafenedRef.current = selfDeafened;
+  }, [selfDeafened]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -897,6 +932,17 @@ export function Dashboard() {
       // Ignore storage write errors.
     }
   }, [micInputVolume]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(VOICE_KEYBINDS_STORAGE_KEY, JSON.stringify(voiceKeybinds));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [voiceKeybinds]);
 
   useEffect(() => {
     selectedWorkspaceIdRef.current = selectedWorkspaceId;
@@ -1137,7 +1183,7 @@ export function Dashboard() {
     makeTone(1280, now + 0.045, 0.05, "square", 0.028);
   }
 
-  function renderMessageBody(text: string) {
+function renderMessageBody(text: string) {
     const matches = Array.from(text.matchAll(URL_REGEX));
     if (matches.length === 0) {
       return text;
@@ -1167,8 +1213,80 @@ export function Dashboard() {
       nodes.push(text.slice(lastIndex));
     }
 
-    return nodes;
+  return nodes;
+}
+
+function loadPersistedVoiceKeybinds(): VoiceKeybinds {
+  if (typeof window === "undefined") {
+    return DEFAULT_VOICE_KEYBINDS;
   }
+  try {
+    const raw = window.localStorage.getItem(VOICE_KEYBINDS_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_VOICE_KEYBINDS;
+    }
+    const parsed = JSON.parse(raw) as Partial<Record<VoiceKeybindAction, unknown>>;
+    return {
+      toggleMic: typeof parsed.toggleMic === "string" && parsed.toggleMic.trim() ? parsed.toggleMic.trim() : DEFAULT_VOICE_KEYBINDS.toggleMic,
+      toggleDeafen:
+        typeof parsed.toggleDeafen === "string" && parsed.toggleDeafen.trim()
+          ? parsed.toggleDeafen.trim()
+          : DEFAULT_VOICE_KEYBINDS.toggleDeafen,
+      toggleScreenShare:
+        typeof parsed.toggleScreenShare === "string" && parsed.toggleScreenShare.trim()
+          ? parsed.toggleScreenShare.trim()
+          : DEFAULT_VOICE_KEYBINDS.toggleScreenShare,
+      pushToTalk: typeof parsed.pushToTalk === "string" && parsed.pushToTalk.trim() ? parsed.pushToTalk.trim() : DEFAULT_VOICE_KEYBINDS.pushToTalk
+    };
+  } catch {
+    return DEFAULT_VOICE_KEYBINDS;
+  }
+}
+
+function formatKeyComboFromKeyboardEvent(event: KeyboardEvent): string | null {
+  if (event.repeat) {
+    return null;
+  }
+  const key = event.key;
+  if (!key || key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") {
+    return null;
+  }
+  const parts: string[] = [];
+  if (event.ctrlKey) {
+    parts.push("Ctrl");
+  }
+  if (event.altKey) {
+    parts.push("Alt");
+  }
+  if (event.shiftKey) {
+    parts.push("Shift");
+  }
+  if (event.metaKey) {
+    parts.push("Meta");
+  }
+  const normalizedKey = key.length === 1 ? key.toUpperCase() : key;
+  parts.push(normalizedKey);
+  return parts.join("+");
+}
+
+function parseReplyPayload(
+  body: string
+): { replyAuthor: string; replySnippet: string; replyMessageId: string | null; messageText: string } | null {
+  const replyPattern = /^↪ Ответ для @([^:]+?)(?: \(id:([^)]+)\))?:\s*(.+?)\n([\s\S]*)$/;
+  const match = body.match(replyPattern);
+  if (!match) {
+    return null;
+  }
+  const [, replyAuthorRaw, replyMessageIdRaw, replySnippetRaw, messageTextRaw] = match;
+  const replyAuthor = replyAuthorRaw.trim();
+  const replyMessageId = replyMessageIdRaw?.trim() || null;
+  const replySnippet = replySnippetRaw.trim();
+  const messageText = messageTextRaw.trim();
+  if (!replyAuthor || !replySnippet || !messageText) {
+    return null;
+  }
+  return { replyAuthor, replySnippet, replyMessageId, messageText };
+}
 
   function toAbsoluteAttachmentUrl(url: string) {
     if (/^https?:\/\//i.test(url)) {
@@ -1194,6 +1312,45 @@ export function Dashboard() {
     return distance <= threshold;
   }
 
+  function jumpToMessage(messageId: string) {
+    const target = document.getElementById(`message-${messageId}`);
+    if (!target) {
+      setError("Исходное сообщение не найдено в загруженной истории.");
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedMessageId(messageId);
+    if (messageJumpHighlightTimeoutRef.current) {
+      window.clearTimeout(messageJumpHighlightTimeoutRef.current);
+    }
+    messageJumpHighlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
+      messageJumpHighlightTimeoutRef.current = null;
+    }, 2200);
+  }
+
+  async function requestVideoFullscreenById(videoId: string) {
+    const node = document.getElementById(videoId) as HTMLVideoElement | null;
+    if (!node) {
+      return;
+    }
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+      if (typeof node.requestFullscreen === "function") {
+        await node.requestFullscreen();
+        return;
+      }
+      const legacyNode = node as HTMLVideoElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+      if (typeof legacyNode.webkitRequestFullscreen === "function") {
+        await legacyNode.webkitRequestFullscreen();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось открыть демонстрацию во весь экран");
+    }
+  }
+
   function bindLivekitRoomHandlers(room: Room) {
     room.on(RoomEvent.TrackPublished, (publication) => {
       if (
@@ -1210,8 +1367,10 @@ export function Dashboard() {
         const audio = new Audio();
         audio.autoplay = true;
         audio.volume = voiceVolumeBySocketIdRef.current[participant.identity] ?? DEFAULT_PARTICIPANT_VOLUME;
+        audio.muted = selfDeafenedRef.current;
         audio.srcObject = new MediaStream([track.mediaStreamTrack]);
         livekitVoiceAudioElsRef.current.set(key, audio);
+        setLivekitRemoteAudioCount(livekitVoiceAudioElsRef.current.size);
         void audio.play().catch(() => undefined);
         return;
       }
@@ -1222,6 +1381,7 @@ export function Dashboard() {
         const audio = new Audio();
         audio.autoplay = false;
         audio.volume = screenShareVolumeByKeyRef.current[key] ?? DEFAULT_PARTICIPANT_VOLUME;
+        audio.muted = selfDeafenedRef.current;
         audio.srcObject = new MediaStream([track.mediaStreamTrack]);
         livekitScreenAudioElsRef.current.set(key, audio);
         if (joinedScreenSharesByKeyRef.current[key]) {
@@ -1248,6 +1408,7 @@ export function Dashboard() {
           audio.pause();
           audio.srcObject = null;
           livekitVoiceAudioElsRef.current.delete(voiceKey);
+          setLivekitRemoteAudioCount(livekitVoiceAudioElsRef.current.size);
         }
       }
       if (publication.source === Track.Source.ScreenShareAudio) {
@@ -1282,6 +1443,7 @@ export function Dashboard() {
           livekitVoiceAudioElsRef.current.delete(audioKey);
         }
       }
+      setLivekitRemoteAudioCount(livekitVoiceAudioElsRef.current.size);
       removeRemoteScreenStream(key);
       const audio = livekitScreenAudioElsRef.current.get(key);
       if (audio) {
@@ -1393,6 +1555,7 @@ export function Dashboard() {
       audio.srcObject = null;
     }
     livekitVoiceAudioElsRef.current.clear();
+    setLivekitRemoteAudioCount(0);
     setRemoteScreenStreams({});
     setJoinedScreenSharesByKey({});
     setScreenShareVolumeByKey({});
@@ -1559,6 +1722,10 @@ export function Dashboard() {
     setVoiceParticipants([]);
     setVoiceBusy(false);
     setVoiceMuted(false);
+    pushToTalkHoldingRef.current = false;
+    pushToTalkPrevMutedRef.current = false;
+    setSelfDeafened(false);
+    setAllRemoteAudioMuted(false);
     setIsScreenSharing(false);
     setRemoteScreenStreams({});
     setVoiceVolumeBySocketId({});
@@ -2631,6 +2798,14 @@ export function Dashboard() {
         }
         return;
       }
+      if (settingsTab === "updates") {
+        setInviteStatus("Раздел обновлений: используйте кнопку проверки обновлений.");
+        return;
+      }
+      if (settingsTab === "keybinds") {
+        setInviteStatus("Бинды сохранены.");
+        return;
+      }
 
       const nextUsername = profileUsername.trim();
       const nextEmail = profileEmail.trim();
@@ -3034,7 +3209,14 @@ export function Dashboard() {
       return;
     }
 
-    const body = messageText.trim();
+    const cleanBody = messageText.trim();
+    const replyPrefix = replyToMessage
+      ? `↪ Ответ для @${replyToMessage.author.username} (id:${replyToMessage.id}): ${replyToMessage.body
+          .slice(0, 120)
+          .replace(/\s+/g, " ")
+          .trim()}`
+      : "";
+    const body = replyPrefix ? `${replyPrefix}\n${cleanBody}` : cleanBody;
     if (!messageAttachment && body.startsWith("/")) {
       const [rawCmd, ...args] = body.split(/\s+/);
       const cmd = rawCmd.toLowerCase();
@@ -3072,6 +3254,7 @@ export function Dashboard() {
     setMessageText("");
     const attachment = messageAttachment;
     setMessageAttachment(null);
+    setReplyToMessage(null);
 
     if (socketRef.current && socketRef.current.connected && !attachment) {
       socketRef.current.emit("chat:send", {
@@ -3110,9 +3293,18 @@ export function Dashboard() {
       requestAnimationFrame(scrollMessagesToBottom);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка отправки сообщения");
-      setMessageText(body);
+      setMessageText(cleanBody);
       setMessageAttachment(attachment ?? null);
+      setReplyToMessage(replyToMessage);
     }
+  }
+
+  function handleMessageComposerKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   }
 
   useEffect(() => {
@@ -3504,6 +3696,8 @@ export function Dashboard() {
       setVoiceJoinedChannelId(selectedChannelId);
       setVoiceParticipants([]);
       setVoiceMuted(false);
+      setSelfDeafened(false);
+      setAllRemoteAudioMuted(false);
       socketRef.current.emit("voice:join", { channelId: selectedChannelId });
       if (isAndroidNativePlatform() && isAndroidVoicePluginAvailable()) {
         if (localStreamRef.current) {
@@ -3628,9 +3822,21 @@ export function Dashboard() {
     }, 120);
   }
 
-  function toggleVoiceMute() {
+  function setAllRemoteAudioMuted(muted: boolean) {
+    for (const audio of livekitVoiceAudioElsRef.current.values()) {
+      audio.muted = muted;
+    }
+    for (const audio of livekitScreenAudioElsRef.current.values()) {
+      audio.muted = muted;
+    }
+    const screenVideos = document.querySelectorAll<HTMLVideoElement>('video[data-screen-share-video="1"]');
+    screenVideos.forEach((video) => {
+      video.muted = muted;
+    });
+  }
+
+  function applyVoiceMute(nextMuted: boolean) {
     if (isAndroidNativePlatform()) {
-      const nextMuted = !voiceMuted;
       setVoiceMuted(nextMuted);
       void updateAndroidVoiceCallService({
         channelName: selectedChannel?.name,
@@ -3647,7 +3853,6 @@ export function Dashboard() {
     }
 
     const stream = localStreamRef.current;
-    const nextMuted = !voiceMuted;
     const room = livekitRoomRef.current;
     if (room) {
       void room.localParticipant.setMicrophoneEnabled(!nextMuted).catch(() => undefined);
@@ -3670,6 +3875,44 @@ export function Dashboard() {
     }
   }
 
+  function toggleVoiceMute() {
+    applyVoiceMute(!voiceMuted);
+  }
+
+  function toggleSelfDeafen() {
+    const next = !selfDeafenedRef.current;
+    if (next) {
+      muteBeforeDeafenRef.current = voiceMuted;
+      applyVoiceMute(true);
+    } else {
+      applyVoiceMute(muteBeforeDeafenRef.current);
+    }
+    setSelfDeafened(next);
+    setAllRemoteAudioMuted(next);
+  }
+
+  function runVoiceKeybindAction(action: VoiceKeybindAction) {
+    if (!voiceJoinedChannelId) {
+      return;
+    }
+    if (action === "toggleMic") {
+      toggleVoiceMute();
+      return;
+    }
+    if (action === "toggleDeafen") {
+      toggleSelfDeafen();
+      return;
+    }
+    if (action === "toggleScreenShare") {
+      if (!isScreenSharing && livekitStatus !== "connected") {
+        return;
+      }
+      void toggleScreenShare();
+      return;
+    }
+    // pushToTalk is handled by keydown/keyup hold logic.
+  }
+
   useEffect(() => {
     if (!voiceJoinedChannelId) {
       return;
@@ -3680,6 +3923,88 @@ export function Dashboard() {
       screenSharing: isScreenSharing
     });
   }, [voiceJoinedChannelId, selectedChannel?.name, voiceMuted, isScreenSharing]);
+
+  useEffect(() => {
+    if (!recordingKeybindAction) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const combo = formatKeyComboFromKeyboardEvent(event);
+      if (!combo) {
+        return;
+      }
+      setVoiceKeybinds((prev) => ({ ...prev, [recordingKeybindAction]: combo }));
+      setRecordingKeybindAction(null);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [recordingKeybindAction]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (recordingKeybindAction) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+      const combo = formatKeyComboFromKeyboardEvent(event);
+      if (!combo) {
+        return;
+      }
+      const matched = (Object.entries(voiceKeybinds) as Array<[VoiceKeybindAction, string]>).find(
+        ([, value]) => value === combo
+      );
+      if (!matched) {
+        return;
+      }
+      event.preventDefault();
+      if (matched[0] === "pushToTalk") {
+        if (!voiceJoinedChannelId || pushToTalkHoldingRef.current) {
+          return;
+        }
+        pushToTalkHoldingRef.current = true;
+        pushToTalkPrevMutedRef.current = voiceMuted;
+        applyVoiceMute(false);
+        return;
+      }
+      runVoiceKeybindAction(matched[0]);
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (recordingKeybindAction) {
+        return;
+      }
+      if (!pushToTalkHoldingRef.current) {
+        return;
+      }
+      const combo = formatKeyComboFromKeyboardEvent(event);
+      if (!combo) {
+        return;
+      }
+      if (combo !== voiceKeybinds.pushToTalk) {
+        return;
+      }
+      event.preventDefault();
+      pushToTalkHoldingRef.current = false;
+      applyVoiceMute(pushToTalkPrevMutedRef.current);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [voiceKeybinds, voiceJoinedChannelId, recordingKeybindAction, voiceMuted, selfDeafened, isScreenSharing, livekitStatus]);
 
   useEffect(() => {
     const mode = isAndroidNativePlatform() ? "android-native" : isAndroidAppRuntime() ? "android-web-fallback" : "web";
@@ -3856,12 +4181,14 @@ export function Dashboard() {
   function openMessageContextMenu(event: React.MouseEvent, message: Message) {
     const canEdit = message.author.id === user?.id;
     const canDelete = message.author.id === user?.id || canDeleteForeignMessages;
-    if (!canEdit && !canDelete) {
+    const canReply = Boolean(selectedChannelId);
+    if (!canEdit && !canDelete && !canReply) {
       return;
     }
     event.preventDefault();
     const menuWidth = 180;
-    const menuHeight = canEdit && canDelete ? 86 : 48;
+    const actionsCount = Number(canReply) + Number(canEdit) + Number(canDelete);
+    const menuHeight = 12 + actionsCount * 34;
     const x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8));
     const y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8));
     setMessageContextMenu({
@@ -3869,7 +4196,8 @@ export function Dashboard() {
       x,
       y,
       canEdit,
-      canDelete
+      canDelete,
+      canReply
     });
   }
 
@@ -4020,6 +4348,15 @@ export function Dashboard() {
   function appendEmojiToMessage(emoji: string) {
     setMessageText((prev) => `${prev}${emoji}`);
     setIsEmojiPickerOpen(false);
+    requestAnimationFrame(() => {
+      const input = messageInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus();
+      const pos = input.value.length;
+      input.setSelectionRange(pos, pos);
+    });
   }
 
   useEffect(() => {
@@ -4301,6 +4638,14 @@ export function Dashboard() {
               <button type="button" onClick={() => setSettingsTab("audio")} style={{ background: settingsTab === "audio" ? "#1d4ed8" : "#0f172a" }}>
                 Звук и микрофон
               </button>
+              <button type="button" onClick={() => setSettingsTab("keybinds")} style={{ background: settingsTab === "keybinds" ? "#1d4ed8" : "#0f172a" }}>
+                Бинды
+              </button>
+              {isDesktopRuntime ? (
+                <button type="button" onClick={() => setSettingsTab("updates")} style={{ background: settingsTab === "updates" ? "#1d4ed8" : "#0f172a" }}>
+                  Обновления
+                </button>
+              ) : null}
             </div>
 
             <form onSubmit={submitProfileUpdate} style={{ display: "grid", gap: 8 }}>
@@ -4346,7 +4691,7 @@ export function Dashboard() {
                     onChange={(event) => setProfileNewPasswordConfirm(event.target.value)}
                   />
                 </>
-              ) : (
+              ) : settingsTab === "audio" ? (
                 <>
                   <label style={{ color: "#cbd5e1", fontSize: 13 }}>Шумоподавление</label>
                   <select value={settingsNoiseMode} onChange={(event) => setSettingsNoiseMode(event.target.value as NoiseMode)} disabled={voiceBusy}>
@@ -4357,22 +4702,72 @@ export function Dashboard() {
                   <small style={{ color: "#94a3b8" }}>
                     Текущий режим: {NOISE_MODE_LABEL[noiseMode]} • Выбран: {NOISE_MODE_LABEL[settingsNoiseMode]}
                   </small>
-                  {isDesktopRuntime ? (
-                    <div style={{ display: "grid", gap: 6, marginTop: 2 }}>
-                      <button
-                        type="button"
-                        onClick={() => void checkDesktopUpdatesManually()}
-                        disabled={desktopUpdateBusy}
-                        style={{ justifySelf: "start" }}
-                      >
-                        {desktopUpdateBusy ? "Проверяем..." : "Проверить обновления"}
-                      </button>
-                      <small style={{ color: desktopUpdateStatus.stage === "error" ? "#f87171" : "#94a3b8" }}>
-                        {desktopUpdateStatus.message}
-                      </small>
-                    </div>
-                  ) : null}
                 </>
+              ) : settingsTab === "keybinds" ? (
+                <>
+                  <small style={{ color: "#94a3b8" }}>
+                    Нажмите «Изменить», затем желаемое сочетание клавиш.
+                  </small>
+                  {(["toggleMic", "toggleDeafen", "toggleScreenShare", "pushToTalk"] as VoiceKeybindAction[]).map((action) => {
+                    const label =
+                      action === "toggleMic"
+                        ? "Микрофон вкл/выкл"
+                        : action === "toggleDeafen"
+                          ? "Оглушить себя (микрофон + наушники)"
+                          : action === "toggleScreenShare"
+                            ? "Показ экрана вкл/выкл"
+                            : "Push-to-Talk (удерживать)";
+                    return (
+                      <div
+                        key={action}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(180px, 1fr) minmax(120px, 160px) auto",
+                          gap: 8,
+                          alignItems: "center"
+                        }}
+                      >
+                        <span style={{ color: "#cbd5e1", fontSize: 13 }}>{label}</span>
+                        <input
+                          value={recordingKeybindAction === action ? "Нажмите клавиши..." : voiceKeybinds[action]}
+                          readOnly
+                          style={{ textAlign: "center" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRecordingKeybindAction((prev) => (prev === action ? null : action))}
+                        >
+                          {recordingKeybindAction === action ? "Отмена" : "Изменить"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVoiceKeybinds(DEFAULT_VOICE_KEYBINDS);
+                        setRecordingKeybindAction(null);
+                      }}
+                    >
+                      Сбросить по умолчанию
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => void checkDesktopUpdatesManually()}
+                    disabled={desktopUpdateBusy}
+                    style={{ justifySelf: "start" }}
+                  >
+                    {desktopUpdateBusy ? "Проверяем..." : "Проверить обновления"}
+                  </button>
+                  <small style={{ color: desktopUpdateStatus.stage === "error" ? "#f87171" : "#94a3b8" }}>
+                    {desktopUpdateStatus.message}
+                  </small>
+                </div>
               )}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -4765,6 +5160,11 @@ export function Dashboard() {
                   LiveKit: {livekitStatus}
                   {livekitError ? ` (${livekitError})` : ""}
                 </div>
+                {isRemoteVoiceSyncing ? (
+                  <div style={{ color: "#fbbf24", fontSize: 12, marginTop: 2 }}>
+                    Подключено. Синхронизируем звук собеседников, это может занять несколько секунд.
+                  </div>
+                ) : null}
                 <div style={{ color: "#93c5fd", fontSize: 11, marginTop: 4 }}>{platformDebugText}</div>
                 {nativeVoiceDebugText ? (
                   <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>{nativeVoiceDebugText}</div>
@@ -4774,6 +5174,9 @@ export function Dashboard() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button type="button" onClick={toggleVoiceMute}>
                       {voiceMuted ? "Включить микрофон" : "Выключить микрофон"}
+                    </button>
+                    <button type="button" onClick={toggleSelfDeafen}>
+                      {selfDeafened ? "Снять оглушение" : "Оглушить себя"}
                     </button>
                     <button
                       type="button"
@@ -4905,6 +5308,11 @@ export function Dashboard() {
                         </div>
                         {joined ? (
                           <>
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <button type="button" onClick={() => void requestVideoFullscreenById(`screen-share-video-${socketId}`)}>
+                                Во весь экран
+                              </button>
+                            </div>
                             <label
                               style={{
                                 display: "grid",
@@ -4926,9 +5334,12 @@ export function Dashboard() {
                               <span style={{ color: "#94a3b8", textAlign: "right" }}>{volume}%</span>
                             </label>
                             <video
+                              id={`screen-share-video-${socketId}`}
+                              data-screen-share-video="1"
                               autoPlay
                               playsInline
                               controls
+                              muted={selfDeafened}
                               style={{
                                 width: "100%",
                                 maxHeight: isMobile ? 90 : 130,
@@ -5236,8 +5647,16 @@ export function Dashboard() {
             {messages.map((message) => (
               <article
                 key={message.id}
+                id={`message-${message.id}`}
                 onContextMenu={(event) => openMessageContextMenu(event, message)}
-                style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #1f2937" }}
+                style={{
+                  marginBottom: 10,
+                  paddingBottom: 8,
+                  borderBottom: "1px solid #1f2937",
+                  background: highlightedMessageId === message.id ? "rgba(59, 130, 246, 0.14)" : "transparent",
+                  borderRadius: 8,
+                  transition: "background-color 220ms ease"
+                }}
               >
                 <div>
                   <span className="gvoice-chat-avatar-host" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -5276,7 +5695,56 @@ export function Dashboard() {
                   </div>
                 ) : (
                   <>
-                    <div style={{ overflowWrap: "anywhere" }}>{renderMessageBody(message.body)}</div>
+                    {(() => {
+                      const replyPayload = parseReplyPayload(message.body);
+                      if (!replyPayload) {
+                        return <div style={{ overflowWrap: "anywhere" }}>{renderMessageBody(message.body)}</div>;
+                      }
+                      return (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div
+                            onClick={() => {
+                              if (replyPayload.replyMessageId) {
+                                jumpToMessage(replyPayload.replyMessageId);
+                              }
+                            }}
+                            title={
+                              replyPayload.replyMessageId
+                                ? "Перейти к исходному сообщению"
+                                : "Для этого ответа переход недоступен"
+                            }
+                            style={{
+                              position: "relative",
+                              border: "1px solid #1d4ed8",
+                              borderRadius: 10,
+                              background:
+                                "linear-gradient(135deg, rgba(29, 78, 216, 0.18) 0%, rgba(15, 23, 42, 0.96) 100%)",
+                              padding: "8px 10px 8px 14px",
+                              cursor: replyPayload.replyMessageId ? "pointer" : "default"
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 4,
+                                borderRadius: "10px 0 0 10px",
+                                background: "linear-gradient(180deg, #60a5fa 0%, #a78bfa 100%)"
+                              }}
+                            />
+                            <small style={{ color: "#93c5fd", display: "block", fontWeight: 600 }}>
+                              ↪ Ответ для @{replyPayload.replyAuthor}
+                            </small>
+                            <small style={{ color: "#cbd5e1", display: "block", marginTop: 2, opacity: 0.92 }}>
+                              {replyPayload.replySnippet}
+                            </small>
+                          </div>
+                          <div style={{ overflowWrap: "anywhere" }}>{renderMessageBody(replyPayload.messageText)}</div>
+                        </div>
+                      );
+                    })()}
                     {message.attachmentUrl ? (
                       <div style={{ marginTop: 8 }}>
                         {isImageAttachment(message.attachmentMime, message.attachmentName, message.attachmentUrl) ? (
@@ -5334,10 +5802,35 @@ export function Dashboard() {
                 zIndex: 2000
               }}
             >
+              {messageContextMenu.canReply ? (
+                <button
+                  type="button"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    marginBottom: messageContextMenu.canEdit || messageContextMenu.canDelete ? 4 : 0
+                  }}
+                  onClick={() => {
+                    const target = messages.find((message) => message.id === messageContextMenu.messageId);
+                    if (!target) {
+                      setMessageContextMenu(null);
+                      return;
+                    }
+                    setReplyToMessage(target);
+                    setMessageContextMenu(null);
+                  }}
+                >
+                  Ответить
+                </button>
+              ) : null}
               {messageContextMenu.canEdit ? (
                 <button
                   type="button"
-                  style={{ width: "100%", textAlign: "left", marginBottom: messageContextMenu.canDelete ? 4 : 0 }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    marginBottom: messageContextMenu.canDelete ? 4 : 0
+                  }}
                   onClick={() => {
                     const target = messages.find((message) => message.id === messageContextMenu.messageId);
                     if (!target) {
@@ -5560,6 +6053,29 @@ export function Dashboard() {
             </div>
           ) : null}
 
+          {replyToMessage ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+                padding: "6px 8px",
+                border: "1px solid #334155",
+                borderRadius: 6,
+                background: "#0b1222"
+              }}
+            >
+              <small style={{ color: "#93c5fd", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Ответ: @{replyToMessage.author.username} — {replyToMessage.body.slice(0, 90).replace(/\s+/g, " ").trim()}
+              </small>
+              <button type="button" onClick={() => setReplyToMessage(null)}>
+                Отменить
+              </button>
+            </div>
+          ) : null}
+
           <form
             onSubmit={sendMessage}
             style={{
@@ -5602,10 +6118,12 @@ export function Dashboard() {
               </div>
             ) : null}
             <input
+              ref={messageInputRef}
               style={{ flex: 1 }}
               placeholder={selectedChannelId ? "Напиши сообщение..." : "Сначала выбери канал"}
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
+              onKeyDown={handleMessageComposerKeyDown}
               disabled={!selectedChannelId}
             />
             <button

@@ -24,6 +24,16 @@ type RegisterConfirmPayload = {
   code: string;
 };
 
+type PasswordResetRequestPayload = {
+  email: string;
+};
+
+type PasswordResetConfirmPayload = {
+  email: string;
+  code: string;
+  newPassword: string;
+};
+
 type AuthContextValue = {
   status: AuthStatus;
   user: AuthUser | null;
@@ -31,6 +41,8 @@ type AuthContextValue = {
   login: (payload: LoginPayload) => Promise<void>;
   requestRegisterCode: (payload: RegisterPayload) => Promise<void>;
   confirmRegisterCode: (payload: RegisterConfirmPayload) => Promise<void>;
+  requestPasswordResetCode: (payload: PasswordResetRequestPayload) => Promise<void>;
+  confirmPasswordReset: (payload: PasswordResetConfirmPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
@@ -297,6 +309,36 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus("authenticated");
   }, []);
 
+  const requestPasswordResetCode = useCallback(async (payload: PasswordResetRequestPayload) => {
+    setError(null);
+
+    const response = await fetch(`${API_URL}/auth/password-reset/request-code`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    await parseResponse<null>(response);
+  }, []);
+
+  const confirmPasswordReset = useCallback(async (payload: PasswordResetConfirmPayload) => {
+    setError(null);
+
+    const response = await fetch(`${API_URL}/auth/password-reset/confirm`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    await parseResponse<null>(response);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await fetch(`${API_URL}/auth/logout`, {
@@ -410,6 +452,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
           throw err;
         }
       },
+      requestPasswordResetCode: async (payload) => {
+        try {
+          await requestPasswordResetCode(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Password reset code request failed";
+          setError(message);
+          throw err;
+        }
+      },
+      confirmPasswordReset: async (payload) => {
+        try {
+          await confirmPasswordReset(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Password reset confirmation failed";
+          setError(message);
+          throw err;
+        }
+      },
       logout,
       refreshProfile: async () => {
         try {
@@ -423,7 +483,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
       getAccessToken,
       authorizedFetch
     }),
-    [status, user, error, login, requestRegisterCode, confirmRegisterCode, logout, refreshProfile, getAccessToken, authorizedFetch]
+    [
+      status,
+      user,
+      error,
+      login,
+      requestRegisterCode,
+      confirmRegisterCode,
+      requestPasswordResetCode,
+      confirmPasswordReset,
+      logout,
+      refreshProfile,
+      getAccessToken,
+      authorizedFetch
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -56,3 +56,51 @@ export async function sendRegistrationCodeEmail(params: {
 <p>Если это были не вы, просто игнорируйте это письмо.</p>`
   });
 }
+
+export async function sendPasswordResetCodeEmail(params: {
+  to: string;
+  username: string;
+  code: string;
+  ttlMinutes: number;
+}): Promise<void> {
+  const { to, username, code, ttlMinutes } = params;
+
+  if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_FROM) {
+    throw new Error("SMTP is not configured");
+  }
+
+  const secure = parseBool(env.SMTP_SECURE, env.SMTP_PORT === 465);
+
+  const transporter = nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure,
+    auth: env.SMTP_USER && env.SMTP_PASS ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+    requireTLS: secure,
+    tls: {
+      servername: getSmtpHostForTls(env.SMTP_HOST),
+      minVersion: "TLSv1.2"
+    }
+  });
+
+  await transporter.verify();
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to,
+    subject: "Код восстановления пароля GVoice",
+    text:
+      `Здравствуйте, ${username}!\n\n` +
+      `Ваш код восстановления пароля: ${code}\n` +
+      `Код действует ${ttlMinutes} минут.\n\n` +
+      "Если это были не вы, просто проигнорируйте это письмо.",
+    html:
+      `<p>Здравствуйте, <b>${username}</b>!</p>` +
+      `<p>Ваш код восстановления пароля: <b style="font-size:20px;letter-spacing:2px;">${code}</b></p>` +
+      `<p>Код действует <b>${ttlMinutes} минут</b>.</p>` +
+      "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+  });
+}

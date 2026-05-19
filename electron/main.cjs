@@ -5,9 +5,31 @@ const DESKTOP_START_URL = process.env.GVOICE_DESKTOP_URL || "https://gvoice.onli
 
 const isDev = process.argv.includes("--dev");
 let mainWindow = null;
+let splashWindow = null;
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 async function createWindow() {
+  splashWindow = new BrowserWindow({
+    width: 560,
+    height: 320,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    center: true,
+    show: true,
+    backgroundColor: "#020617",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  await splashWindow.loadFile(path.join(__dirname, "splash.html"));
+
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -15,6 +37,7 @@ async function createWindow() {
     minHeight: 700,
     icon: path.join(__dirname, "icons", "icon.ico"),
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -30,6 +53,19 @@ async function createWindow() {
     void shell.openExternal(url);
     return { action: "deny" };
   });
+
+  const revealMainWindow = () => {
+    if (!win.isDestroyed()) {
+      win.show();
+    }
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+    }
+    splashWindow = null;
+  };
+
+  win.webContents.once("did-finish-load", revealMainWindow);
+  win.webContents.once("did-fail-load", revealMainWindow);
 
   if (isDev) {
     await win.loadURL("http://localhost:5173");

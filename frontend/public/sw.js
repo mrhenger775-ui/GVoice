@@ -1,4 +1,4 @@
-const CACHE_NAME = "gvoice-shell-v1";
+const CACHE_NAME = "gvoice-shell-v2";
 const SHELL_URLS = ["/", "/manifest.webmanifest", "/favicon.png"];
 
 self.addEventListener("install", (event) => {
@@ -32,6 +32,23 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/socket.io/") || url.pathname.startsWith("/uploads/") || url.pathname.startsWith("/media/")) {
+    return;
+  }
+
+  const isHtmlNavigation =
+    event.request.mode === "navigate" ||
+    (event.request.headers.get("accept") || "").includes("text/html");
+
+  if (isHtmlNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const cloned = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned)).catch(() => undefined);
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+    );
     return;
   }
 

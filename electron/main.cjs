@@ -7,6 +7,17 @@ const isDev = process.argv.includes("--dev");
 let mainWindow = null;
 let splashWindow = null;
 
+async function clearDesktopWebCache() {
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      storages: ["serviceworkers", "cachestorage"]
+    });
+  } catch (error) {
+    console.warn("[desktop-cache] failed to clear cache:", error?.message ?? error);
+  }
+}
+
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 async function createWindow() {
   splashWindow = new BrowserWindow({
@@ -163,6 +174,8 @@ function setupAutoUpdates() {
 }
 
 app.whenReady().then(() => {
+  void clearDesktopWebCache();
+
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     if (permission === "media" || permission === "display-capture") {
       return true;

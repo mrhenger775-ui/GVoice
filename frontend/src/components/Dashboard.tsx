@@ -27,6 +27,9 @@ declare global {
     gvoiceDesktop?: {
       platform: string;
       checkForUpdates?: () => Promise<{ ok: boolean; reason?: string }>;
+      setGlobalHotkeys?: (bindings: Record<string, string>) => Promise<{ ok: boolean }>;
+      onGlobalHotkey?: (handler: (payload: { action: "toggleMic" | "toggleDeafen" | "toggleScreenShare" }) => void) => (() => void) | void;
+      onPushToTalkHold?: (handler: (payload: { down: boolean }) => void) => (() => void) | void;
       onUpdateStatus?: (
         handler: (payload: { stage: string; version?: string | null; percent?: number; message?: string }) => void
       ) => (() => void) | void;
@@ -655,6 +658,7 @@ export function Dashboard() {
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
+  const [editingMessageReplyPrefix, setEditingMessageReplyPrefix] = useState<string | null>(null);
   const [messageContextMenu, setMessageContextMenu] = useState<MessageContextMenuState | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
@@ -693,6 +697,7 @@ export function Dashboard() {
   const [screenShareVolumeByKey, setScreenShareVolumeByKey] = useState<Record<string, number>>({});
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<Record<string, MediaStream>>({});
+  const [expandedScreenShareKey, setExpandedScreenShareKey] = useState<string | null>(null);
   const [livekitRemoteAudioCount, setLivekitRemoteAudioCount] = useState(0);
   const [joinedScreenSharesByKey, setJoinedScreenSharesByKey] = useState<Record<string, boolean>>({});
   const [remoteScreenPresenterByKey, setRemoteScreenPresenterByKey] = useState<Record<string, string>>({});
@@ -1329,10 +1334,10 @@ function parseReplyPayload(
     }, 2200);
   }
 
-  async function requestVideoFullscreenById(videoId: string) {
+  async function requestVideoFullscreenById(videoId: string): Promise<boolean> {
     const node = document.getElementById(videoId) as HTMLVideoElement | null;
     if (!node) {
-      return;
+      return false;
     }
     try {
       if (document.fullscreenElement) {
@@ -1340,14 +1345,34 @@ function parseReplyPayload(
       }
       if (typeof node.requestFullscreen === "function") {
         await node.requestFullscreen();
-        return;
+        return true;
       }
-      const legacyNode = node as HTMLVideoElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+      const legacyNode = node as HTMLVideoElement & {
+        webkitRequestFullscreen?: () => Promise<void> | void;
+        webkitEnterFullscreen?: () => Promise<void> | void;
+      };
       if (typeof legacyNode.webkitRequestFullscreen === "function") {
         await legacyNode.webkitRequestFullscreen();
+        return true;
       }
+      if (typeof legacyNode.webkitEnterFullscreen === "function") {
+        await legacyNode.webkitEnterFullscreen();
+        return true;
+      }
+      return false;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось открыть демонстрацию во весь экран");
+      return false;
+    }
+  }
+
+  async function openScreenShareFullscreen(streamKey: string) {
+    if (isDesktopRuntime) {
+      setExpandedScreenShareKey(streamKey);
+      return;
+    }
+    const nativeFullscreenOpened = await requestVideoFullscreenById(`screen-share-video-${streamKey}`);
+    if (!nativeFullscreenOpened) {
+      setExpandedScreenShareKey(streamKey);
     }
   }
 
@@ -3469,11 +3494,12 @@ function parseReplyPayload(
     if (!selectedChannelId) {
       return;
     }
-    const body = editingMessageText.trim();
-    if (!body) {
+    const editedText = editingMessageText.trim();
+    if (!editedText) {
       setError("Сообщение не может быть пустым.");
       return;
     }
+    const body = editingMessageReplyPrefix ? `${editingMessageReplyPrefix}\n${editedText}` : editedText;
     setError(null);
     try {
       const response = await authorizedFetch(`/channels/${selectedChannelId}/messages/${messageId}`, {
@@ -3489,6 +3515,7 @@ function parseReplyPayload(
       setMessages((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       setEditingMessageId(null);
       setEditingMessageText("");
+      setEditingMessageReplyPrefix(null);
       setMessageContextMenu(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка редактирования сообщения");
@@ -3517,6 +3544,7 @@ function parseReplyPayload(
       if (editingMessageId === messageId) {
         setEditingMessageId(null);
         setEditingMessageText("");
+        setEditingMessageReplyPrefix(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка удаления сообщения");
@@ -3925,6 +3953,15 @@ function parseReplyPayload(
   }, [voiceJoinedChannelId, selectedChannel?.name, voiceMuted, isScreenSharing]);
 
   useEffect(() => {
+    if (!expandedScreenShareKey) {
+      return;
+    }
+    if (!remoteScreenStreams[expandedScreenShareKey]) {
+      setExpandedScreenShareKey(null);
+    }
+  }, [expandedScreenShareKey, remoteScreenStreams]);
+
+  useEffect(() => {
     if (!recordingKeybindAction) {
       return;
     }
@@ -3945,6 +3982,9 @@ function parseReplyPayload(
   }, [recordingKeybindAction]);
 
   useEffect(() => {
+    if (isDesktopRuntime) {
+      return;
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (recordingKeybindAction) {
         return;
@@ -4004,7 +4044,66 @@ function parseReplyPayload(
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [voiceKeybinds, voiceJoinedChannelId, recordingKeybindAction, voiceMuted, selfDeafened, isScreenSharing, livekitStatus]);
+  }, [voiceKeybinds, voiceJoinedChannelId, recordingKeybindAction, voiceMuted, selfDeafened, isScreenSharing, livekitStatus, isDesktopRuntime]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime || !window.gvoiceDesktop?.setGlobalHotkeys) {
+      return;
+    }
+    void window.gvoiceDesktop.setGlobalHotkeys({
+      toggleMic: voiceKeybinds.toggleMic,
+      toggleDeafen: voiceKeybinds.toggleDeafen,
+      toggleScreenShare: voiceKeybinds.toggleScreenShare,
+      pushToTalk: voiceKeybinds.pushToTalk
+    });
+  }, [isDesktopRuntime, voiceKeybinds]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime || !window.gvoiceDesktop?.onGlobalHotkey) {
+      return;
+    }
+    const unsub = window.gvoiceDesktop.onGlobalHotkey((payload) => {
+      if (!payload?.action) {
+        return;
+      }
+      runVoiceKeybindAction(payload.action);
+    });
+    return () => {
+      if (typeof unsub === "function") {
+        unsub();
+      }
+    };
+  }, [isDesktopRuntime, voiceJoinedChannelId, voiceMuted, selfDeafened, isScreenSharing, livekitStatus]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime || !window.gvoiceDesktop?.onPushToTalkHold) {
+      return;
+    }
+    const unsub = window.gvoiceDesktop.onPushToTalkHold((payload) => {
+      if (!voiceJoinedChannelId) {
+        return;
+      }
+      if (payload?.down) {
+        if (pushToTalkHoldingRef.current) {
+          return;
+        }
+        pushToTalkHoldingRef.current = true;
+        pushToTalkPrevMutedRef.current = voiceMuted;
+        applyVoiceMute(false);
+        return;
+      }
+      if (!pushToTalkHoldingRef.current) {
+        return;
+      }
+      pushToTalkHoldingRef.current = false;
+      applyVoiceMute(pushToTalkPrevMutedRef.current);
+    });
+    return () => {
+      if (typeof unsub === "function") {
+        unsub();
+      }
+    };
+  }, [isDesktopRuntime, voiceJoinedChannelId, voiceMuted]);
 
   useEffect(() => {
     const mode = isAndroidNativePlatform() ? "android-native" : isAndroidAppRuntime() ? "android-web-fallback" : "web";
@@ -4793,6 +4892,48 @@ function parseReplyPayload(
           </section>
         </div>
       ) : null}
+      {expandedScreenShareKey && remoteScreenStreams[expandedScreenShareKey] ? (
+        <div
+          onClick={() => setExpandedScreenShareKey(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 3500,
+            background: "rgba(2, 6, 23, 0.96)",
+            display: "grid",
+            gridTemplateRows: "auto minmax(0, 1fr)",
+            gap: 8,
+            padding: 12
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <b style={{ color: "#e5e7eb" }}>Демонстрация экрана</b>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpandedScreenShareKey(null);
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+          <video
+            autoPlay
+            playsInline
+            controls
+            muted={selfDeafened}
+            style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000", borderRadius: 8 }}
+            onClick={(event) => event.stopPropagation()}
+            ref={(node) => {
+              const stream = remoteScreenStreams[expandedScreenShareKey];
+              if (node && stream && node.srcObject !== stream) {
+                node.srcObject = stream;
+              }
+            }}
+          />
+        </div>
+      ) : null}
       <section
         style={{
           display: "grid",
@@ -5309,7 +5450,7 @@ function parseReplyPayload(
                         {joined ? (
                           <>
                             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                              <button type="button" onClick={() => void requestVideoFullscreenById(`screen-share-video-${socketId}`)}>
+                              <button type="button" onClick={() => void openScreenShareFullscreen(socketId)}>
                                 Во весь экран
                               </button>
                             </div>
@@ -5687,6 +5828,7 @@ function parseReplyPayload(
                         onClick={() => {
                           setEditingMessageId(null);
                           setEditingMessageText("");
+                          setEditingMessageReplyPrefix(null);
                         }}
                       >
                         Отмена
@@ -5837,8 +5979,16 @@ function parseReplyPayload(
                       setMessageContextMenu(null);
                       return;
                     }
+                    const replyPayload = parseReplyPayload(target.body);
                     setEditingMessageId(target.id);
-                    setEditingMessageText(target.body);
+                    if (replyPayload) {
+                      const newlineIndex = target.body.indexOf("\n");
+                      setEditingMessageReplyPrefix(newlineIndex >= 0 ? target.body.slice(0, newlineIndex) : null);
+                      setEditingMessageText(replyPayload.messageText);
+                    } else {
+                      setEditingMessageReplyPrefix(null);
+                      setEditingMessageText(target.body);
+                    }
                     setMessageContextMenu(null);
                   }}
                 >

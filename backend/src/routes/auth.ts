@@ -50,6 +50,9 @@ const PASSWORD_RESET_PURPOSE = "password_reset";
 const PASSWORD_RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RATE_MAX_ATTEMPTS = 5;
 const passwordResetRateLimit = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_RATE_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_RATE_MAX_ATTEMPTS = 10;
+const loginRateLimit = new Map<string, { count: number; resetAt: number }>();
 const REFRESH_COOKIE_SECURE = env.REFRESH_COOKIE_SECURE.toLowerCase() === "true";
 const REFRESH_COOKIE_SAMESITE = env.REFRESH_COOKIE_SAMESITE;
 const EMOJI_AVATARS = ["😀", "😎", "🤖", "🦊", "🐼", "🐱", "🐶", "🦁", "🐸", "🐵", "🐙", "🦄", "🐧", "🐯", "🐨", "🐺"];
@@ -107,6 +110,24 @@ function consumePasswordResetRateLimit(key: string): { ok: true } | { ok: false;
 
   entry.count += 1;
   passwordResetRateLimit.set(key, entry);
+  return { ok: true };
+}
+
+function consumeLoginRateLimit(key: string): { ok: true } | { ok: false; retryAfterSec: number } {
+  const now = Date.now();
+  const entry = loginRateLimit.get(key);
+
+  if (!entry || entry.resetAt <= now) {
+    loginRateLimit.set(key, { count: 1, resetAt: now + LOGIN_RATE_WINDOW_MS });
+    return { ok: true };
+  }
+
+  if (entry.count >= LOGIN_RATE_MAX_ATTEMPTS) {
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)) };
+  }
+
+  entry.count += 1;
+  loginRateLimit.set(key, entry);
   return { ok: true };
 }
 
@@ -538,6 +559,15 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   }
 
   const { email, password } = parsed.data;
+  const ip = getClientIp(req) ?? "unknown-ip";
+  const rateKey = `${email.toLowerCase()}|${ip}`;
+  const rate = consumeLoginRateLimit(rateKey);
+  if (!rate.ok) {
+    res.setHeader("Retry-After", String(rate.retryAfterSec));
+    res.status(429).json({ error: "Too many login attempts, try again later", retryAfterSec: rate.retryAfterSec });
+    return;
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {

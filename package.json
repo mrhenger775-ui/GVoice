@@ -1,7 +1,7 @@
 {
   "name": "gvoice",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "author": "GVoice Team",
   "description": "GVoice monorepo starter",
   "main": "electron/main.cjs",
@@ -27,7 +27,8 @@
     "wait-on": "^8.0.1"
   },
   "dependencies": {
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "uiohook-napi": "^1.5.5"
   },
   "build": {
     "appId": "online.gvoice.desktop",

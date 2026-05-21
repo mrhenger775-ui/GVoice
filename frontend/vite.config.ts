@@ -10,7 +10,30 @@ export default defineConfig({
   },
   build: {
     // Keep old hashed assets so clients with stale index.html do not break on deploy.
-    emptyOutDir: false
+    emptyOutDir: false,
+    chunkSizeWarningLimit: 1400,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+          if (id.includes("react") || id.includes("scheduler")) {
+            return "vendor-react";
+          }
+          if (id.includes("socket.io-client")) {
+            return "vendor-socket";
+          }
+          if (id.includes("livekit-client")) {
+            return "vendor-livekit";
+          }
+          if (id.includes("hls.js")) {
+            return "vendor-hls";
+          }
+          return "vendor-misc";
+        }
+      }
+    }
   },
   server: {
     port: 5173

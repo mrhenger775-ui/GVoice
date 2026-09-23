@@ -1,9 +1,23 @@
 ﻿import { useAuth } from "./auth/AuthContext";
+import { useEffect, useState } from "react";
 import { AuthScreen } from "./components/AuthScreen";
 import { Dashboard } from "./components/Dashboard";
+import { LandingPage } from "./components/LandingPage";
 
 export function App() {
   const { status } = useAuth();
+
+  const [publicPageHash, setPublicPageHash] = useState(() => window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => setPublicPageHash(window.location.hash);
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  if (publicPageHash === "#legal" || publicPageHash === "#support") {
+    return <LandingPage />;
+  }
 
   if (status === "loading") {
     return (
@@ -46,7 +60,7 @@ export function App() {
   }
 
   if (status === "anonymous") {
-    return <AuthScreen />;
+    return window.gvoiceDesktop ? <AuthScreen /> : <LandingPage />;
   }
 
   return <Dashboard />;

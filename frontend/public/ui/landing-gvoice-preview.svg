@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="869" viewBox="0 0 1400 869">
+  <defs>
+    <linearGradient id="active" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3270ef"/><stop offset="1" stop-color="#2454cf"/>
+    </linearGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#b9ff2b"/><stop offset="1" stop-color="#58a900"/>
+    </linearGradient>
+    <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      text{font-family:Inter,"Segoe UI",Arial,sans-serif}.t{fill:#f4f7fc;font-weight:600}.m{fill:#7f95b2}.s{fill:#aec0d8}.blue{fill:#69aaff}.green{fill:#38dc7b}.xs{font-size:12px}.sm{font-size:14px}.md{font-size:16px}.lg{font-size:20px}.xl{font-size:23px;font-weight:700}.button{fill:#091321;stroke:#324761}.card{fill:#0d1728;stroke:#2a3d58}.input{fill:#091321;stroke:#30445e}
+    </style>
+  </defs>
+
+  <rect width="1400" height="869" fill="#07101e"/>
+  <g transform="translate(0 -31)">
+  <image href="gvoice-logo-main.png" x="18" y="43" width="144" height="86" preserveAspectRatio="xMinYMid meet"/>
+  <g transform="translate(900 45)">
+    <rect width="150" height="28" rx="14" fill="#073b20" stroke="#15964e"/><text x="75" y="19" text-anchor="middle" fill="#4df08a" font-size="12">В звонке: # Прайм</text>
+    <rect x="160" width="90" height="28" rx="6" class="button"/><text x="205" y="19" text-anchor="middle" class="t sm">Настройки</text>
+    <rect x="260" width="60" height="28" rx="6" class="button"/><text x="290" y="19" text-anchor="middle" class="t sm">Выйти</text>
+    <text x="330" y="19" class="m xs">build: 2026-07-20</text>
+    <circle cx="245" cy="53" r="14" fill="#235dd5"/><text x="245" y="58" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">N</text>
+    <text x="270" y="59" class="s sm">Пользователь: NovaRay • ID: 27</text>
+  </g>
+  <g transform="translate(14 125)">
+    <rect width="99" height="25" rx="5" fill="#2a5dda" stroke="#3977ff"/><text x="49" y="17" text-anchor="middle" fill="#fff" class="sm" font-weight="700">Пространства</text>
+    <rect x="108" width="140" height="25" rx="5" class="button"/><text x="178" y="17" text-anchor="middle" class="t sm">Личные сообщения</text>
+  </g>
+
+  <rect x="14" y="165" width="260" height="721" rx="10" fill="#0d1728" stroke="#263850"/>
+  <rect x="286" y="165" width="300" height="721" rx="10" fill="#0d1728" stroke="#263850"/>
+  <rect x="598" y="165" width="788" height="721" rx="10" fill="#0d1728" stroke="#263850"/>
+
+  <g transform="translate(25 181)">
+    <text y="10" class="t xl">Пространства</text>
+    <rect y="37" width="238" height="29" rx="6" class="input"/><text x="10" y="57" class="m sm">Название</text>
+    <rect y="73" width="238" height="29" rx="6" class="input"/><text x="10" y="93" class="t sm">По заявке</text><path d="M222 84l6 6 6-6" fill="none" stroke="#c6d3e4" stroke-width="2"/>
+    <rect y="109" width="238" height="29" rx="6" class="button"/><text x="119" y="129" text-anchor="middle" class="t sm">Создать</text>
+    <rect y="149" width="238" height="29" rx="6" class="input"/><text x="10" y="169" class="m sm">Найти пространство...</text>
+
+    <g transform="translate(0 190)"><rect width="238" height="61" rx="8" class="card"/><text x="11" y="24" class="t md">AURORA BASE</text><text x="11" y="44" class="blue xs">ID: 6 • участник • открытое</text></g>
+    <g transform="translate(0 259)"><rect width="238" height="61" rx="8" class="card"/><text x="11" y="24" class="t md">PIXEL ARENA</text><text x="11" y="44" class="blue xs">ID: 13 • участник • по заявке</text></g>
+    <g transform="translate(0 328)"><rect width="238" height="61" rx="8" class="card"/><text x="11" y="24" class="t md">NIGHT SHIFT</text><text x="11" y="44" class="blue xs">ID: 21 • админ • открытое</text></g>
+    <g transform="translate(0 397)"><rect width="238" height="61" rx="8" class="card"/><text x="11" y="24" class="t md">GAME LOUNGE</text><text x="11" y="44" class="blue xs">ID: 4 • участник • по заявке</text></g>
+    <g transform="translate(0 466)"><rect width="238" height="61" rx="8" fill="url(#active)" stroke="#3a78ff"/><text x="11" y="24" fill="#fff" font-size="16" font-weight="800">ORBIT TEAM</text><text x="11" y="44" fill="#c8ddff" font-size="12">ID: 1 • владелец • по заявке</text></g>
+  </g>
+
+  <g transform="translate(297 181)">
+    <text y="10" class="t xl">Каналы</text><text y="65" class="s md">ORBIT TEAM</text>
+    <rect y="89" width="263" height="28" rx="6" class="input"/><text x="9" y="108" class="m sm">Название канала</text>
+    <rect y="124" width="263" height="28" rx="6" class="input"/><text x="9" y="143" class="t sm">Текстовый</text><path d="M247 135l6 6 6-6" fill="none" stroke="#c6d3e4" stroke-width="2"/>
+    <rect x="6" y="158" width="13" height="13" rx="2" fill="#f4f4f4"/>
+    <text x="27" y="168" class="t" font-size="11">Приватный канал (доступ только по</text>
+    <text x="27" y="181" class="t" font-size="11">приглашению)</text>
+    <rect y="190" width="263" height="28" rx="6" class="button"/><text x="131" y="209" text-anchor="middle" class="t sm">Создать текстовый канал</text>
+
+    <g transform="translate(0 226)"><rect width="263" height="55" rx="8" class="card"/><text x="11" y="22" class="t md"># Лобби</text><text x="11" y="41" class="blue xs">голосовой</text></g>
+    <g transform="translate(0 289)"><rect width="263" height="55" rx="8" class="card"/><text x="11" y="22" class="t md"># Командная</text><text x="11" y="41" class="blue xs">текстовый • приватный</text></g>
+    <g transform="translate(0 352)"><rect width="263" height="55" rx="8" class="card"/><text x="11" y="22" class="t md"># Музыка</text><text x="11" y="41" class="blue xs">голосовой</text></g>
+    <g transform="translate(0 415)"><rect width="263" height="55" rx="8" fill="url(#active)" stroke="#3977ff"/><text x="11" y="22" fill="#fff" font-size="16" font-weight="700"># Прайм</text><text x="11" y="41" fill="#c9deff" font-size="12">голосовой • приватный</text></g>
+
+    <text y="492" class="t md">Заявки на вступление</text><text y="518" class="m sm">Новых заявок нет.</text>
+    <text y="546" class="t md">Участники пространства</text>
+    <g transform="translate(0 559)"><rect width="246" height="68" rx="8" class="card"/><circle cx="17" cy="20" r="7" fill="#32dc77"/><circle cx="42" cy="20" r="14" fill="#235dd5"/><text x="42" y="25" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">N</text><text x="65" y="26" class="t md">NovaRay</text><text x="217" y="26" class="s xs">Вы</text><text x="12" y="49" class="blue xs">ID: 27 • владелец</text><text x="12" y="64" class="green xs">онлайн</text></g>
+    <g transform="translate(0 635)"><rect width="246" height="68" rx="8" class="card"/><circle cx="17" cy="20" r="7" fill="#32dc77"/><circle cx="42" cy="20" r="14" fill="#7c3aed"/><text x="42" y="25" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">V</text><text x="65" y="26" class="t md">VoltFox</text><text x="12" y="49" class="blue xs">ID: 42 • админ</text><text x="12" y="64" class="green xs">онлайн</text></g>
+  </g>
+  <rect x="569" y="166" width="10" height="718" rx="5" fill="#f2f2f2"/><rect x="570" y="184" width="8" height="170" rx="4" fill="#777"/>
+
+  <g transform="translate(609 181)">
+    <text y="10" class="t xl"># Прайм</text>
+    <g transform="translate(0 39)">
+      <rect width="756" height="194" rx="9" fill="#0e192b" stroke="#304765"/>
+      <text x="10" y="27" class="t lg">Голосовой звонок</text><text x="10" y="49" class="s sm">Вы подключены к звонку</text><text x="10" y="69" class="blue xs">LiveKit: connected</text><text x="10" y="88" class="blue xs">platform=web</text>
+      <g transform="translate(10 101)">
+        <rect width="147" height="29" rx="6" class="button"/><text x="73" y="20" text-anchor="middle" class="t sm">Выключить микрофон</text>
+        <rect x="157" width="105" height="29" rx="6" class="button"/><text x="209" y="20" text-anchor="middle" class="t sm">Оглушить себя</text>
+        <rect x="272" width="109" height="29" rx="6" class="button"/><text x="326" y="20" text-anchor="middle" class="t sm">Показать экран</text>
+        <rect x="391" width="82" height="29" rx="6" class="button"/><text x="432" y="20" text-anchor="middle" class="t sm">Мини-игры</text>
+        <rect x="483" width="114" height="29" rx="6" class="button"/><text x="540" y="20" text-anchor="middle" class="t sm">Выйти из звонка</text>
+      </g>
+      <text x="10" y="143" class="s sm">Участники: NovaRay, VoltFox, PixelWave</text>
+      <g transform="translate(10 149)"><circle cx="20" cy="20" r="18" fill="#235dd5" stroke="#37de7c" stroke-width="3" filter="url(#softGlow)"/><text x="20" y="26" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">N</text><circle cx="66" cy="20" r="18" fill="#7c3aed" stroke="#37de7c" stroke-width="3"/><text x="66" y="26" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">V</text><circle cx="112" cy="20" r="18" fill="#0f8a9d" stroke="#37de7c" stroke-width="3"/><text x="112" y="26" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">P</text></g>
+    </g>
+
+    <rect y="244" width="200" height="27" rx="5" class="input"/><text x="8" y="262" class="blue xs">Пригласить в канал (username)</text><rect x="208" y="244" width="84" height="27" rx="5" class="button"/><text x="250" y="263" text-anchor="middle" class="m sm">Пригласить</text>
+    <g transform="translate(0 281)"><rect width="756" height="64" rx="8" fill="#0e192b" stroke="#304765"/><text x="10" y="27" class="t lg">Media-бот</text><text x="746" y="27" text-anchor="end" class="blue xs">Команды: /play ссылка /pause /resume /stop</text><text x="10" y="51" class="m sm">Сейчас ничего не воспроизводится.</text></g>
+
+    <g transform="translate(0 356)">
+      <rect width="756" height="284" rx="8" fill="#0a1322" stroke="#283b55"/>
+      <g transform="translate(10 17)"><circle cx="16" cy="16" r="15" fill="#7c3aed"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">V</text><text x="40" y="15" class="t md">VoltFox</text><text x="113" y="15" class="blue xs">Сегодня, 21:37</text><text x="40" y="39" class="s sm">Всем привет! Уже можно подключаться?</text><line y1="57" x2="720" y2="57" stroke="#1d2e46"/></g>
+      <g transform="translate(10 84)"><circle cx="16" cy="16" r="15" fill="#235dd5"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">N</text><text x="40" y="15" class="t md">NovaRay</text><text x="120" y="15" class="blue xs">Сегодня, 21:38</text><text x="40" y="39" class="s sm">Да, заходите в голосовой канал.</text><line y1="57" x2="720" y2="57" stroke="#1d2e46"/></g>
+      <g transform="translate(10 151)"><circle cx="16" cy="16" r="15" fill="#0f8a9d"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">P</text><text x="40" y="15" class="t md">PixelWave</text><text x="132" y="15" class="blue xs">Сегодня, 21:39</text><text x="40" y="39" class="s sm">Слышу всех отлично, начинаем!</text><line y1="57" x2="720" y2="57" stroke="#1d2e46"/></g>
+      <g transform="translate(10 218)"><circle cx="16" cy="16" r="15" fill="#235dd5"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">N</text><text x="40" y="15" class="t md">NovaRay</text><text x="120" y="15" class="blue xs">Сегодня, 21:40</text><text x="40" y="39" class="s sm">Отлично, запускаю мини-игру GStrike.</text></g>
+      <rect x="739" y="3" width="14" height="278" rx="7" fill="#f0f0f0"/><rect x="741" y="190" width="10" height="74" rx="5" fill="#777"/>
+    </g>
+    <g transform="translate(0 650)"><rect width="573" height="41" rx="7" class="input"/><text x="11" y="27" class="m sm">Напиши сообщение...</text><rect x="583" width="41" height="41" rx="7" class="button"/><text x="603" y="27" text-anchor="middle" fill="#ffc83d" font-size="18">●</text><rect x="634" width="41" height="41" rx="7" class="button"/><text x="654" y="27" text-anchor="middle" class="s lg">↟</text><rect x="685" width="71" height="41" rx="7" class="button"/><text x="720" y="27" text-anchor="middle" class="m sm">Отправить</text></g>
+  </g>
+  </g>
+</svg>

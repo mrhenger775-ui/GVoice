@@ -11,20 +11,233 @@ model User {
   id              String             @id @default(uuid())
   numericId       Int?               @unique @map("numeric_id")
   email           String             @unique
+  phone           String?            @unique
+  phoneVerifiedAt DateTime?          @map("phone_verified_at")
   username        String
   passwordHash    String             @map("password_hash")
   avatarUrl       String?            @map("avatar_url")
+  customizationJson String?          @map("customization_json")
+  lastSeenAt      DateTime?          @map("last_seen_at")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
+  legalAcceptedAt DateTime?          @map("legal_accepted_at")
+  legalVersion    String?            @map("legal_version")
   refreshSessions RefreshSession[]
+  oauthIdentities OAuthIdentity[]
+  phoneVerificationCodes PhoneVerificationCode[]
   ownedWorkspaces Workspace[]        @relation("WorkspaceOwner")
   memberships     WorkspaceMember[]
   channelsCreated Channel[]          @relation("ChannelCreator")
-  channelAccess   ChannelMember[]
-  messages        Message[]
+    channelAccess   ChannelMember[]
+    channelReadStates ChannelReadState[]
+    messages        Message[]
   joinRequests    WorkspaceJoinRequest[]
+  sentFriendRequests FriendRequest[]     @relation("FriendRequestSender")
+  receivedFriendRequests FriendRequest[] @relation("FriendRequestReceiver")
+  friendshipsLeft Friendship[]           @relation("FriendshipLeftUser")
+  friendshipsRight Friendship[]          @relation("FriendshipRightUser")
+  blocksMade      UserBlock[]             @relation("UserBlockBlocker")
+  blocksReceived  UserBlock[]             @relation("UserBlockBlocked")
+  workspaceBansReceived WorkspaceBan[]    @relation("WorkspaceBanUser")
+  workspaceBansIssued   WorkspaceBan[]    @relation("WorkspaceBanIssuer")
+  supportTickets        SupportTicket[]   @relation("SupportRequester")
+  assignedSupportTickets SupportTicket[]  @relation("SupportAssignee")
+  supportMessages       SupportMessage[]
+  supportTicketEvents   SupportTicketEvent[]
+  supportPushSubscriptions SupportPushSubscription[]
+  paymentOrders         PaymentOrder[]
+  gvoiceSubscription    GVoiceSubscription?
+  subscriptionPayments  SubscriptionPayment[]
+  gameTopupOrders       GameTopupOrder[]
+  newsPosts             NewsPost[]
+  newsLikes             NewsLike[]
+  newsComments          NewsComment[]
+  newsReposts           NewsRepost[]
+  voiceTranscriptionsRequested VoiceTranscription[] @relation("VoiceTranscriptionRequester")
+  cloudFiles            CloudFile[]
 
   @@map("users")
+}
+
+model PhoneVerificationCode {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  phone     String
+  codeHash  String    @map("code_hash")
+  providerCheckId String? @unique @map("provider_check_id")
+  callPhone String? @map("call_phone")
+  attempts  Int       @default(0)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, phone, createdAt])
+  @@index([expiresAt])
+  @@map("phone_verification_codes")
+}
+
+model OAuthIdentity {
+  id                   String    @id @default(uuid())
+  provider             String
+  providerUserId       String    @map("provider_user_id")
+  providerEmail        String?   @map("provider_email")
+  accessTokenEncrypted String?   @map("access_token_encrypted")
+  refreshTokenEncrypted String?  @map("refresh_token_encrypted")
+  providerDeviceId     String?   @map("provider_device_id")
+  tokenExpiresAt       DateTime? @map("token_expires_at")
+  scope                 String?
+  friendsSyncEnabledAt DateTime? @map("friends_sync_enabled_at")
+  userId                String    @map("user_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_identities")
+}
+
+model PaymentOrder {
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  provider              String    @default("tbank")
+  status                String    @default("pending")
+  fulfillmentStatus     String    @default("waiting_payment") @map("fulfillment_status")
+  paymentMethod         String    @map("payment_method")
+  currency              String    @default("RUB")
+  steamLogin            String    @map("steam_login")
+  steamAmountKopecks    Int       @map("steam_amount_kopecks")
+  serviceFeeKopecks     Int       @map("service_fee_kopecks")
+  paymentAmountKopecks  Int       @map("payment_amount_kopecks")
+  providerOperationId   String?   @unique @map("provider_operation_id")
+  supplierOrderNumber   Int?      @unique @map("supplier_order_number")
+  supplierStatus        String?   @map("supplier_status")
+  supplierStatusReason  String?   @map("supplier_status_reason")
+  supplierFailCode      String?   @map("supplier_fail_code")
+  fulfillmentClaimedAt  DateTime? @map("fulfillment_claimed_at")
+  paidAt                DateTime? @map("paid_at")
+  fulfilledAt           DateTime? @map("fulfilled_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("payment_orders")
+}
+
+model GVoiceSubscription {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  plan               String   @default("gvoice_plus")
+  status             String   @default("active")
+  startedAt          DateTime @map("started_at")
+  currentPeriodStart DateTime @map("current_period_start")
+  currentPeriodEnd   DateTime @map("current_period_end")
+  canceledAt         DateTime? @map("canceled_at")
+  autoRenew          Boolean  @default(false) @map("auto_renew")
+  recurringConsentAt DateTime? @map("recurring_consent_at")
+  rebillId           String?  @map("rebill_id")
+  customerKey        String?  @map("customer_key")
+  nextChargeAt       DateTime? @map("next_charge_at")
+  renewalFailureCount Int     @default(0) @map("renewal_failure_count")
+  lastRenewalAttemptAt DateTime? @map("last_renewal_attempt_at")
+  lastRenewalError   String?  @map("last_renewal_error")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, currentPeriodEnd])
+  @@index([autoRenew, nextChargeAt])
+  @@map("gvoice_subscriptions")
+}
+
+model SubscriptionPayment {
+  id                   String    @id @default(uuid())
+  userId               String    @map("user_id")
+  provider             String    @default("tbank")
+  status               String    @default("pending")
+  plan                 String    @default("gvoice_plus")
+  billingPeriodDays    Int       @default(30) @map("billing_period_days")
+  currency             String    @default("RUB")
+  paymentMethod        String    @default("card") @map("payment_method")
+  paymentAmountKopecks Int       @map("payment_amount_kopecks")
+  recurringConsentAt   DateTime? @map("recurring_consent_at")
+  paymentKind           String    @default("initial") @map("payment_kind")
+  providerRebillId      String?   @map("provider_rebill_id")
+  legalVersion         String?   @map("legal_version")
+  consentIp            String?   @map("consent_ip")
+  consentUserAgent     String?   @map("consent_user_agent")
+  providerOperationId  String?   @unique @map("provider_operation_id")
+  paymentUrl           String?   @map("payment_url")
+  expiresAt            DateTime? @map("expires_at")
+  paidAt               DateTime? @map("paid_at")
+  appliedAt            DateTime? @map("applied_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("subscription_payments")
+}
+
+model CloudFile {
+  id           String    @id @default(uuid())
+  ownerId      String    @map("owner_id")
+  objectKey    String    @unique @map("object_key")
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  category     String
+  sizeBytes    BigInt    @map("size_bytes")
+  status       String    @default("pending")
+  etag         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, status, createdAt])
+  @@index([ownerId, category, createdAt])
+  @@map("cloud_files")
+}
+model GameTopupOrder {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  provider               String    @default("tbank")
+  status                 String    @default("pending")
+  fulfillmentStatus      String    @default("waiting_payment") @map("fulfillment_status")
+  paymentMethod          String    @default("card") @map("payment_method")
+  currency               String    @default("RUB")
+  brand                   String
+  categoryId              String    @map("category_id")
+  categoryName            String    @map("category_name")
+  offerId                 String    @map("offer_id")
+  offerName               String    @map("offer_name")
+  region                  String?
+  variant                 String?
+  customerFieldsJson      String    @map("customer_fields_json")
+  supplierPriceUsdMicros  Int       @map("supplier_price_usd_micros")
+  usdRubRateMicros        Int       @map("usd_rub_rate_micros")
+  fxBufferBasisPoints     Int       @map("fx_buffer_basis_points")
+  markupBasisPoints       Int       @map("markup_basis_points")
+  paymentAmountKopecks    Int       @map("payment_amount_kopecks")
+  providerOperationId     String?   @unique @map("provider_operation_id")
+  supplierOrderNumber     Int?      @unique @map("supplier_order_number")
+  supplierStatus          String?   @map("supplier_status")
+  supplierStatusReason    String?   @map("supplier_status_reason")
+  supplierFailCode        String?   @map("supplier_fail_code")
+  fulfillmentClaimedAt    DateTime? @map("fulfillment_claimed_at")
+  paidAt                  DateTime? @map("paid_at")
+  fulfilledAt             DateTime? @map("fulfilled_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([fulfillmentStatus, updatedAt])
+  @@map("game_topup_orders")
 }
 
 model EmailVerificationCode {
@@ -64,6 +277,7 @@ model Workspace {
   name       String
   slug       String            @unique
   joinPolicy String            @default("request") @map("join_policy")
+  kind       String            @default("space")
   ownerId    String            @map("owner_id")
   createdAt  DateTime          @default(now()) @map("created_at")
   updatedAt  DateTime          @updatedAt @map("updated_at")
@@ -71,8 +285,52 @@ model Workspace {
   members    WorkspaceMember[]
   channels   Channel[]
   joinRequests WorkspaceJoinRequest[]
+  bans       WorkspaceBan[]
 
   @@map("workspaces")
+}
+
+model FriendRequest {
+  id          String   @id @default(uuid())
+  senderId    String   @map("sender_id")
+  receiverId  String   @map("receiver_id")
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  sender      User     @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id          String   @id @default(uuid())
+  userAId     String   @map("user_a_id")
+  userBId     String   @map("user_b_id")
+  workspaceId String?  @unique @map("workspace_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  userA       User     @relation("FriendshipLeftUser", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User     @relation("FriendshipRightUser", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("friendships")
+}
+
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  blocker   User     @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
 }
 
 model WorkspaceMember {
@@ -87,6 +345,21 @@ model WorkspaceMember {
   @@map("workspace_members")
 }
 
+model WorkspaceBan {
+  id          String    @id @default(uuid())
+  workspaceId String    @map("workspace_id")
+  userId      String    @map("user_id")
+  bannedById  String    @map("banned_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation("WorkspaceBanUser", fields: [userId], references: [id], onDelete: Cascade)
+  bannedBy    User      @relation("WorkspaceBanIssuer", fields: [bannedById], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_bans")
+}
+
 model Channel {
   id         String          @id @default(uuid())
   workspaceId String         @map("workspace_id")
@@ -97,8 +370,9 @@ model Channel {
   createdAt  DateTime        @default(now()) @map("created_at")
   workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   creator    User            @relation("ChannelCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  members    ChannelMember[]
-  messages   Message[]
+    members    ChannelMember[]
+    readStates ChannelReadState[]
+    messages   Message[]
 
   @@map("channels")
 }
@@ -111,6 +385,19 @@ model ChannelMember {
 
   @@id([channelId, userId])
   @@map("channel_members")
+}
+
+model ChannelReadState {
+  channelId  String   @map("channel_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @map("last_read_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@index([userId])
+  @@map("channel_read_states")
 }
 
 model Message {
@@ -126,9 +413,30 @@ model Message {
   createdAt DateTime @default(now()) @map("created_at")
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  voiceTranscription VoiceTranscription?
 
   @@index([channelId, createdAt])
   @@map("messages")
+}
+
+model VoiceTranscription {
+  id              String    @id @default(uuid())
+  messageId       String    @unique @map("message_id")
+  requestedById   String    @map("requested_by_id")
+  status          String    @default("pending")
+  operationId     String?   @unique @map("operation_id")
+  text            String?
+  errorMessage    String?   @map("error_message")
+  durationSeconds Int       @map("duration_seconds")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
+  message         Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  requestedBy     User      @relation("VoiceTranscriptionRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([requestedById, createdAt])
+  @@index([status, updatedAt])
+  @@map("voice_transcriptions")
 }
 
 model WorkspaceJoinRequest {
@@ -144,4 +452,134 @@ model WorkspaceJoinRequest {
   @@unique([workspaceId, userId])
   @@index([workspaceId, status])
   @@map("workspace_join_requests")
+}
+
+model SupportTicket {
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  subject         String
+  status          String               @default("open")
+  category        String               @default("other")
+  priority        String               @default("normal")
+  staffUnread     Boolean              @default(true) @map("staff_unread")
+  requesterUnread Boolean              @default(false) @map("requester_unread")
+  assignedToId    String?              @map("assigned_to_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  requester       User                 @relation("SupportRequester", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo      User?                @relation("SupportAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages        SupportMessage[]
+  events          SupportTicketEvent[]
+
+  @@index([userId, updatedAt])
+  @@index([status, updatedAt])
+  @@index([priority, updatedAt])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id         String        @id @default(uuid())
+  ticketId   String        @map("ticket_id")
+  authorId   String        @map("author_id")
+  body       String
+  isInternal Boolean       @default(false) @map("is_internal")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author     User          @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@map("support_messages")
+}
+
+model SupportPushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  kind      String
+  endpoint  String?  @unique
+  p256dh    String?
+  auth      String?
+  token     String?  @unique
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+  @@map("support_push_subscriptions")
+}
+
+model SupportTicketEvent {
+  id        String        @id @default(uuid())
+  ticketId  String        @map("ticket_id")
+  actorId   String?       @map("actor_id")
+  kind      String
+  details   String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor     User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_events")
+}
+model NewsPost {
+  id          String        @id @default(uuid())
+  authorId    String?       @map("author_id")
+  kind        String        @default("user")
+  category    String        @default("Игры")
+  title       String
+  body        String
+  imageUrl    String?       @map("image_url")
+  sourceUrl   String?       @map("source_url")
+  sourceName  String?       @map("source_name")
+  isOfficial  Boolean       @default(false) @map("is_official")
+  status      String        @default("published")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  author      User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  likes       NewsLike[]
+  comments    NewsComment[]
+  reposts     NewsRepost[]
+
+  @@index([status, updatedAt])
+  @@index([authorId, createdAt])
+  @@index([sourceUrl])
+  @@map("news_posts")
+}
+
+model NewsLike {
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      NewsPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId, createdAt])
+  @@map("news_likes")
+}
+
+model NewsComment {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+  post      NewsPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("news_comments")
+}
+
+model NewsRepost {
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  post      NewsPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId, createdAt])
+  @@map("news_reposts")
 }
